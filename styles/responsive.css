@@ -1,0 +1,47 @@
+/* Responsive behaviour: the layout changes shape, it does not merely shrink. */
+
+/* Mobile: one pane at a time — chat list, then conversation. */
+@media (max-width: 767px) {
+  .espresso-shell {
+    grid-template-columns: 1fr;
+  }
+  .espresso-conversation {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    transform: translateX(100%);
+    transition: transform var(--motion-base) var(--motion-calm);
+  }
+  .espresso-conversation[data-open="true"] {
+    transform: translateX(0);
+  }
+}
+
+/* Tablet and up: chat list + conversation side by side. */
+@media (min-width: 768px) {
+  .espresso-shell {
+    grid-template-columns: 340px 1fr;
+  }
+  .espresso-conversation {
+    transform: none !important;
+    position: static;
+  }
+}
+
+/* Large desktop: give the chat list a little more room. */
+@media (min-width: 1600px) {
+  .espresso-shell {
+    grid-template-columns: 400px 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

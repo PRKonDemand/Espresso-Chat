@@ -1,0 +1,11 @@
+/* Settings + modal surfaces. */
+.espresso-modal-backdrop {
+  background: rgb(0 0 0 / 0.35);
+  backdrop-filter: blur(2px);
+}
+.espresso-panel {
+  background: rgb(var(--c-elevated));
+  border: 1px solid rgb(var(--c-line));
+  border-radius: 0.9rem;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.16);
+}

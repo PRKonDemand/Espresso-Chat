@@ -1,0 +1,42 @@
+@import "./theme.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-line;
+  }
+  html,
+  body {
+    height: 100%;
+  }
+  body {
+    @apply bg-bg text-ink antialiased;
+    font-family: var(--font-sans);
+    text-rendering: optimizeLegibility;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-bg;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  /* Hide the app's scrollbars but keep them subtle where shown */
+  .thin-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb {
+    background: rgb(var(--c-line));
+    border-radius: 999px;
+  }
+}
