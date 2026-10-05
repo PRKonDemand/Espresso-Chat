@@ -13,11 +13,17 @@ type Row = Message | OptimisticMessage;
 export function MessageList({
   messages,
   meId,
-  onReply
+  onReply,
+  hasMore,
+  loadingOlder,
+  onLoadOlder
 }: {
   messages: Row[];
   meId: string;
   onReply: (message: Row) => void;
+  hasMore?: boolean;
+  loadingOlder?: boolean;
+  onLoadOlder?: () => void;
 }) {
   const byId = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
 
@@ -43,6 +49,19 @@ export function MessageList({
 
   return (
     <div className="flex flex-col gap-1.5 py-3">
+      {hasMore && (
+        <div className="flex justify-center pb-1">
+          <button
+            type="button"
+            onClick={onLoadOlder}
+            disabled={loadingOlder}
+            className="rounded-full bg-bubble px-3 py-1 text-xs text-muted transition-colors hover:text-ink disabled:opacity-50"
+          >
+            {loadingOlder ? "Loading…" : "Load earlier messages"}
+          </button>
+        </div>
+      )}
+
       {grouped.map((group) => (
         <div key={group.day} className="flex flex-col gap-1.5">
           <div className="sticky top-0 z-10 mx-auto rounded-full bg-bubble/90 px-3 py-1 text-xs text-muted backdrop-blur">

@@ -59,9 +59,18 @@ export async function uploadImage(
   return { path, width, height };
 }
 
-/** Private bucket -> short-lived signed URL for rendering. */
+/**
+ * Signed URLs are cached for their lifetime, so scrolling a chat full of
+ * photos doesn't re-sign every image on each render.
+ */
+const urlCache = new Map<string, { url: string; expiresAt: number }>();
+
 export async function getSignedUrl(client: Client, path: string, expiresIn = 3600) {
+  const cached = urlCache.get(path);
+  if (cached && cached.expiresAt - 60_000 > Date.now()) return cached.url;
+
   const { data, error } = await client.storage.from(BUCKET).createSignedUrl(path, expiresIn);
   if (error) throw error;
+  urlCache.set(path, { url: data.signedUrl, expiresAt: Date.now() + expiresIn * 1000 });
   return data.signedUrl;
 }

@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { friendlyError } from "@/lib/errors";
-import type { Profile } from "@/types/database";
-import type { Message } from "@/types/database";
+import type { Profile, Message } from "@/types/database";
 import type { OptimisticMessage } from "@/types/app";
 import { useMessages } from "@/features/messaging/hooks/useMessages";
 import { useTypingIndicator } from "@/features/typing-indicator/hooks/useTypingIndicator";
@@ -31,15 +30,28 @@ export function Conversation({
   onDeleted: () => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
-  const { messages, loading, error, clearError, sendTextMessage, sendImageMessage, sendLocationMessage } =
-    useMessages(chatId, meId);
+  const {
+    messages,
+    loading,
+    loadingOlder,
+    hasMore,
+    error,
+    clearError,
+    loadOlder,
+    sendTextMessage,
+    sendImageMessage,
+    sendLocationMessage
+  } = useMessages(chatId, meId);
   const { typingUsers, notifyTyping, notifyStop } = useTypingIndicator(chatId, meId);
 
   const [partner, setPartner] = useState<Pick<Profile, "id" | "name" | "user_id" | "avatar_url"> | null>(null);
   const [blocked, setBlocked] = useState(false);
   const [iBlocked, setIBlocked] = useState(false);
   const [replyTo, setReplyTo] = useState<Row | null>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
+  const lastIdRef = useRef<string | null>(null);
+  const restoreRef = useRef<{ h: number; t: number } | null>(null);
 
   // Partner + block state.
   useEffect(() => {
@@ -61,13 +73,30 @@ export function Conversation({
     };
   }, [chatId, meId, supabase]);
 
-  // Keep the newest message in view.
-  useEffect(() => {
+  // Scroll: jump to newest only when a *new* last message arrives; otherwise
+  // preserve position (so loading older messages doesn't yank the viewport).
+  useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages.length, typingUsers.length]);
+    if (!el) return;
+    if (restoreRef.current) {
+      el.scrollTop = el.scrollHeight - restoreRef.current.h + restoreRef.current.t;
+      restoreRef.current = null;
+      return;
+    }
+    const last = messages[messages.length - 1];
+    if (last && last.id !== lastIdRef.current) {
+      lastIdRef.current = last.id;
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [messages]);
 
   const handleReply = useCallback((m: Row) => setReplyTo(m), []);
+
+  const handleLoadOlder = async () => {
+    const el = scrollRef.current;
+    restoreRef.current = el ? { h: el.scrollHeight, t: el.scrollTop } : null;
+    await loadOlder();
+  };
 
   const sendText = (content: string) => {
     sendTextMessage(content, replyTo?.id ?? null);
@@ -86,7 +115,6 @@ export function Conversation({
       await sendLocationMessage(coords.latitude, coords.longitude, undefined, replyTo?.id ?? null);
       setReplyTo(null);
     } catch {
-      // Permission denied / unavailable: surfaced as a gentle inline notice.
       alert("Location permission was denied or unavailable.");
     }
   };
@@ -126,7 +154,14 @@ export function Conversation({
         ) : messages.length === 0 ? (
           <EmptyState title="No messages yet" description="Say hello — messages appear instantly." />
         ) : (
-          <MessageList messages={messages} meId={meId} onReply={handleReply} />
+          <MessageList
+            messages={messages}
+            meId={meId}
+            onReply={handleReply}
+            hasMore={hasMore}
+            loadingOlder={loadingOlder}
+            onLoadOlder={handleLoadOlder}
+          />
         )}
       </div>
 

@@ -30,22 +30,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(null);
       return;
     }
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", u.id)
-      .maybeSingle();
+    const { data } = await supabase.from("profiles").select("*").eq("id", u.id).maybeSingle();
     setProfile(data ?? null);
   };
 
   useEffect(() => {
     let active = true;
 
-    supabase.auth.getUser().then(async ({ data }) => {
+    // Fast path: read the persisted session from cookies with no network hop,
+    // so the app can render immediately.
+    supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
-      setUser(data.user);
-      await loadProfile(data.user);
+      setUser(data.session?.user ?? null);
       setLoading(false);
+      if (data.session?.user) void loadProfile(data.session.user);
+    });
+
+    // Then validate/refresh against the auth server in the background.
+    supabase.auth.getUser().then(({ data }) => {
+      if (!active) return;
+      setUser(data.user ?? null);
+      if (data.user) void loadProfile(data.user);
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {

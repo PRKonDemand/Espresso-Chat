@@ -104,6 +104,22 @@ export type Database = {
       };
       start_direct_chat: { Args: { p_other_user_id: string }; Returns: string };
       has_recovery_code: { Args: Record<PropertyKey, never>; Returns: boolean };
+      get_chat_summaries: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          chat_id: string;
+          last_message_at: string;
+          other_id: string | null;
+          other_user_id: string | null;
+          other_name: string | null;
+          other_avatar_url: string | null;
+          last_content: string | null;
+          last_type: string | null;
+          last_sender_id: string | null;
+          last_created_at: string | null;
+          blocked: boolean;
+        }[];
+      };
       is_chat_member: { Args: { p_chat: string; p_user: string }; Returns: boolean };
       are_blocked: { Args: { p_a: string; p_b: string }; Returns: boolean };
     };

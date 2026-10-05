@@ -5,102 +5,79 @@ import type { ChatSummary } from "@/types/app";
 type Client = SupabaseClient<Database>;
 
 const PROFILE_COLUMNS = "id, user_id, name, avatar_url";
+export const MESSAGE_PAGE_SIZE = 50;
 
-/**
- * Load the caller's chat list: membership, the other participant, the last
- * message, and whether a block exists between the two people.
- */
-export async function listChats(client: Client, meId: string): Promise<ChatSummary[]> {
-  const { data: memberships, error: mErr } = await client
-    .from("chat_members")
-    .select("chat_id, deleted_at")
-    .eq("user_id", meId);
-  if (mErr) throw mErr;
-
-  const chatIds = (memberships ?? []).map((m) => m.chat_id);
-  if (chatIds.length === 0) return [];
-
-  const [{ data: chats }, { data: members }, { data: blocks }] = await Promise.all([
-    client.from("chats").select("id, last_message_at").in("id", chatIds),
-    client.from("chat_members").select("chat_id, user_id").in("chat_id", chatIds),
-    client.from("blocks").select("blocker_id, blocked_id")
-  ]);
-
-  const otherIds = (members ?? [])
-    .filter((m) => m.user_id !== meId)
-    .map((m) => m.user_id);
-
-  const { data: profiles } = otherIds.length
-    ? await client.from("profiles").select(PROFILE_COLUMNS).in("id", otherIds)
-    : { data: [] as Pick<Profile, "id" | "user_id" | "name" | "avatar_url">[] };
-
-  const profileById = new Map((profiles ?? []).map((p) => [p.id, p]));
-  const otherByChat = new Map<string, string>();
-  for (const m of members ?? []) {
-    if (m.user_id !== meId) otherByChat.set(m.chat_id, m.user_id);
-  }
-
-  // Last message per chat.
-  const { data: recent } = await client
-    .from("messages")
-    .select("id, chat_id, content, type, sender_id, created_at")
-    .in("chat_id", chatIds)
-    .order("created_at", { ascending: false })
-    .limit(400);
-
-  const lastByChat = new Map<string, ChatSummary["lastMessage"]>();
-  for (const msg of recent ?? []) {
-    if (!lastByChat.has(msg.chat_id)) {
-      lastByChat.set(msg.chat_id, {
-        content: msg.content,
-        type: msg.type,
-        sender_id: msg.sender_id,
-        created_at: msg.created_at
-      });
-    }
-  }
-
-  const hidden = new Set(
-    (memberships ?? []).filter((m) => m.deleted_at).map((m) => m.chat_id)
-  );
-  const blockedSet = new Set<string>();
-  for (const b of blocks ?? []) {
-    blockedSet.add(b.blocker_id === meId ? b.blocked_id : b.blocker_id);
-  }
-
-  const chatMeta = new Map((chats ?? []).map((c) => [c.id, c]));
-
-  const summaries: ChatSummary[] = chatIds
-    .filter((id) => !hidden.has(id))
-    .map((id) => {
-      const otherId = otherByChat.get(id) ?? null;
-      const other = otherId ? profileById.get(otherId) ?? null : null;
-      return {
-        id,
-        lastMessageAt:
-          chatMeta.get(id)?.last_message_at ?? new Date(0).toISOString(),
-        otherUser: other
-          ? { id: other.id, user_id: other.user_id, name: other.name, avatar_url: other.avatar_url }
-          : null,
-        lastMessage: lastByChat.get(id) ?? null,
-        unreadCount: 0,
-        blocked: otherId ? blockedSet.has(otherId) : false
-      };
-    })
-    .sort((a, b) => (a.lastMessageAt < b.lastMessageAt ? 1 : -1));
-
-  return summaries;
+export interface MessagePage {
+  messages: Message[];
+  hasMore: boolean;
 }
 
-export async function getMessages(client: Client, chatId: string): Promise<Message[]> {
+/**
+ * The whole chat list in ONE round trip (see migration 0007). Previously this
+ * was six queries plus a 400-message scan on every load.
+ */
+export async function listChats(client: Client): Promise<ChatSummary[]> {
+  const { data, error } = await client.rpc("get_chat_summaries");
+  if (error) throw error;
+
+  return (data ?? []).map((r) => ({
+    id: r.chat_id,
+    lastMessageAt: r.last_message_at,
+    otherUser: r.other_id
+      ? {
+          id: r.other_id,
+          user_id: r.other_user_id ?? "",
+          name: r.other_name ?? "Unknown",
+          avatar_url: r.other_avatar_url
+        }
+      : null,
+    lastMessage: r.last_created_at
+      ? {
+          content: r.last_content,
+          type: (r.last_type as Message["type"]) ?? "text",
+          sender_id: r.last_sender_id ?? "",
+          created_at: r.last_created_at
+        }
+      : null,
+    unreadCount: 0,
+    blocked: r.blocked
+  }));
+}
+
+/** Latest page of messages, oldest-first, with a "more available" flag. */
+export async function getMessages(
+  client: Client,
+  chatId: string,
+  limit = MESSAGE_PAGE_SIZE
+): Promise<MessagePage> {
   const { data, error } = await client
     .from("messages")
     .select("*")
     .eq("chat_id", chatId)
-    .order("created_at", { ascending: true })
-    .limit(500);
+    .order("created_at", { ascending: false })
+    .limit(limit + 1);
   if (error) throw error;
-  return data ?? [];
+  const rows = data ?? [];
+  return { messages: rows.slice(0, limit).reverse(), hasMore: rows.length > limit };
+}
+
+/** Page of messages older than a timestamp (for scroll-back). */
+export async function getOlderMessages(
+  client: Client,
+  chatId: string,
+  beforeIso: string,
+  limit = MESSAGE_PAGE_SIZE
+): Promise<MessagePage> {
+  const { data, error } = await client
+    .from("messages")
+    .select("*")
+    .eq("chat_id", chatId)
+    .lt("created_at", beforeIso)
+    .order("created_at", { ascending: false })
+    .limit(limit + 1);
+  if (error) throw error;
+  const rows = data ?? [];
+  return { messages: rows.slice(0, limit).reverse(), hasMore: rows.length > limit };
 }
 
 export async function getChatPartner(client: Client, chatId: string, meId: string) {
@@ -169,7 +146,7 @@ export function subscribeToMessages(
   };
 }
 
-/** Live inserts across every chat the caller belongs to (drives the chat list). */
+/** Live inserts across the caller's chats (drives the chat list). */
 export function subscribeToInbox(
   client: Client,
   onInsert: (msg: Message) => void
