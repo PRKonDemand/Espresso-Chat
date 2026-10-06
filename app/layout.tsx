@@ -8,11 +8,21 @@ import { AuthProvider } from "@/features/authentication/components/AuthProvider"
 
 export const metadata: Metadata = {
   title: "Espresso",
-  description: "Fast, reliable, clean real-time messaging."
+  description: "Fast, reliable, clean real-time messaging.",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: "/icon.png",
+    apple: "/apple-icon.png"
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Espresso",
+    statusBarStyle: "black-translucent"
+  }
 };
 
 export const viewport: Viewport = {
-  themeColor: "#6b4f3a",
+  themeColor: "#000000",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1
